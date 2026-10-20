@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>動画かんたん分割</title>
+<meta name="theme-color" content="#06a35a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="動画分割">
+
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--sub:#667085;--ac:#06a35a;--ac2:#e8f7ef;--bd:#dfe3ea;--err:#d92d20;--warn:#b54708;--warnbg:#fff4e5;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151b;--card:#1b202a;--tx:#eef1f6;--sub:#9aa4b5;--ac:#2fd283;--ac2:#14301f;--bd:#2b3240;--err:#ff7a70;--warn:#ffb866;--warnbg:#33260f}}
+:root[data-theme="dark"]{--bg:#12151b;--card:#1b202a;--tx:#eef1f6;--sub:#9aa4b5;--ac:#2fd283;--ac2:#14301f;--bd:#2b3240;--err:#ff7a70;--warn:#ffb866;--warnbg:#33260f}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.6;font-size:16px}
+main{max-width:560px;margin:0 auto;padding:16px 14px 60px}
+h1{font-size:20px;margin:6px 0 2px}
+.lead{color:var(--sub);font-size:13px;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 10px}
+.num{display:inline-block;background:var(--ac);color:#04210f;border-radius:50%;width:22px;height:22px;text-align:center;font-size:13px;line-height:22px;margin-right:6px;font-weight:700}
+button{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;padding:10px 14px;min-height:44px}
+button.main{background:var(--ac);color:#04210f;border-color:var(--ac);font-weight:700;width:100%}
+button:disabled{opacity:.45}
+.seg{display:flex;gap:8px;flex-wrap:wrap}
+.seg label{flex:1;min-width:100px;border:1px solid var(--bd);border-radius:10px;padding:10px;text-align:center;cursor:pointer}
+.seg input{display:none}
+.seg input:checked+span{font-weight:700;color:var(--ac)}
+.seg label:has(input:checked){background:var(--ac2);border-color:var(--ac)}
+input[type=number],input[type=text]{font:inherit;width:100%;border:1px solid var(--bd);border-radius:10px;padding:10px;background:var(--bg);color:var(--tx)}
+video{width:100%;border-radius:10px;background:#000;max-height:50vh}
+.note{font-size:12px;color:var(--sub)}
+.warn{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.chip{background:var(--ac2);border:1px solid var(--ac);border-radius:20px;padding:4px 6px 4px 12px;font-size:14px;display:inline-flex;gap:4px;align-items:center}
+.chip button{min-height:28px;padding:0 8px;border-radius:14px}
+.item{border-top:1px solid var(--bd);padding:10px 0}
+.item:first-child{border-top:0}
+.item .t{font-weight:700;word-break:break-all}
+.bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;width:0;background:var(--ac)}
+.err{color:var(--err);font-size:13px}
+.hide{display:none}
+.item video{margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+<h1>動画かんたん分割</h1>
+<p class="lead">LINEや「みてね」に送れる長さに動画を分けます。動画はこの端末の中だけで処理し、外部には送信しません。</p>
+
+<div class="card"><h2><span class="num">1</span>動画をえらぶ</h2>
+<input type="file" id="file" accept="video/*" class="hide">
+<button id="pick" class="main">動画を選ぶ</button>
+<div id="info" class="note" style="margin-top:8px">元の動画はそのまま残ります。</div>
+<video id="pv" class="hide" controls playsinline preload="metadata"></video>
+</div>
+
+<div class="card"><h2><span class="num">2</span>送り先と長さ</h2>
+<div class="seg" id="target">
+<label><input type="radio" name="t" value="line" checked><span>LINE<br><small>178秒以内</small></span></label>
+<label><input type="radio" name="t" value="mite"><span>みてね<br><small>118秒以内</small></span></label>
+<label><input type="radio" name="t" value="free"><span>自由<br><small>指定−2秒</small></span></label>
+</div>
+<div id="freeBox" class="hide row"><span>1本あたり</span><input type="number" id="freeSec" min="5" value="60" inputmode="numeric" style="width:100px"><span>秒（実際は2秒短く分割）</span></div>
+<div class="note" style="margin-top:8px">1本の長さ：<b id="lim">178</b>秒以内</div>
+</div>
+
+<div class="card"><h2><span class="num">3</span>分け方</h2>
+<div class="seg" id="mode">
+<label><input type="radio" name="m" value="auto" checked><span>自動</span></label>
+<label><input type="radio" name="m" value="manual"><span>手動</span></label>
+</div>
+<div id="manualBox" class="hide">
+<p class="note">分けたい位置（切る時間）を追加します。動画を動かして止め、「いまの位置で切る」を押すと簡単です。</p>
+<div class="row"><button id="cutHere">✂ いまの位置で切る</button>
+<button id="back1">−0.1秒</button><button id="fwd1">+0.1秒</button></div>
+<div class="row"><input type="text" id="cutTxt" placeholder="例: 1:30.5 または 90.5" style="flex:1" inputmode="decimal"><button id="cutAdd">追加</button></div>
+<div id="cuts" class="row"></div>
+</div>
+<div id="plan" class="note" style="margin-top:10px"></div>
+<div id="planWarn"></div>
+</div>
+
+<div class="card"><h2><span class="num">4</span>画質</h2>
+<div class="seg" id="qual">
+<label><input type="radio" name="q" value="keep" checked><span>品質維持</span></label>
+<label><input type="radio" name="q" value="small"><span>容量削減</span></label>
+</div>
+<p class="note">容量削減は元の大きさに合わせて解像度を自動で下げます。音声はそのまま残します。</p>
+</div>
+
+<button id="go" class="main" disabled>分割をはじめる</button>
+<p class="note" id="goNote">処理には、動画とほぼ同じ時間がかかります。処理中は画面を閉じず、この画面を開いたままにしてください。</p>
+
+<div class="card hide" id="resCard"><h2>結果</h2><div id="res"></div>
+<div class="note">保存ボタンを1つずつ押してください。iPhoneは「共有」画面から「ビデオを保存」を選べます。</div></div>
+</main>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const S={file:null,url:null,dur:0,cuts:[],busy:false,items:[],w:0,h:0};
+const BASE={line:178,mite:118};
+const fmt=t=>{t=Math.max(0,t);const m=Math.floor(t/60),s=t-m*60;return m+":"+(s<10?"0":"")+s.toFixed(1)};
+const pad=n=>String(n).padStart(2,"0");
+const val=n=>document.querySelector('input[name="'+n+'"]:checked').value;
+const limit=()=>{const t=val("t");if(t==="free"){const v=parseFloat($("freeSec").value)||0;return Math.max(1,v-2)}return BASE[t]};
+function parseTime(s){s=s.trim().replace(/：/g,":").replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248));if(!s)return NaN;const p=s.split(":").map(Number);if(p.some(isNaN))return NaN;return p.reduce((a,b)=>a*60+b,0)}
+function segments(){
+ if(!S.dur)return[];const L=limit();const out=[];
+ if(val("m")==="auto"){let a=0;while(a<S.dur-0.05){const b=Math.min(a+L,S.dur);out.push([a,b]);a=b}}
+ else{const pts=[0,...S.cuts,S.dur];for(let i=0;i<pts.length-1;i++)out.push([pts[i],pts[i+1]])}
+ return out;
+}
+function refresh(){
+ $("lim").textContent=limit();
+ $("freeBox").classList.toggle("hide",val("t")!=="free");
+ $("manualBox").classList.toggle("hide",val("m")!=="manual");
+ $("cuts").innerHTML="";
+ S.cuts.forEach((c,i)=>{const d=document.createElement("span");d.className="chip";d.textContent=fmt(c)+" ";const b=document.createElement("button");b.textContent="✕";b.onclick=()=>{if(S.busy)return;S.cuts.splice(i,1);refresh()};d.appendChild(b);$("cuts").appendChild(d)});
+ const sg=segments();const L=limit();
+ $("plan").innerHTML=S.dur?("全"+sg.length+"本に分割："+sg.map((s,i)=>(i+1)+"本目 "+Math.round(s[1]-s[0])+"秒").join(" / ")):"動画を選ぶと、ここに分割の予定が出ます。";
+ const over=sg.map((s,i)=>[i,s[1]-s[0]]).filter(x=>x[1]>L+0.01);
+ $("planWarn").innerHTML=over.length?'<div class="warn">⚠ '+over.map(o=>(o[0]+1)+"本目（"+o[1].toFixed(1)+"秒）").join("、")+'が'+L+'秒を超えています。切る位置を追加して短くしてください。</div>':"";
+ $("go").disabled=!S.dur||S.busy||over.length>0||sg.length===0;
+}
+document.querySelectorAll("input[type=radio],#freeSec").forEach(e=>e.addEventListener("change",()=>{if(!S.busy)refresh()}));
+$("freeSec").addEventListener("input",()=>{if(!S.busy)refresh()});
+$("pick").onclick=()=>{if(S.busy){alert("処理中は別の動画を選べません。");return}$("file").click()};
+$("file").onchange=e=>{
+ const f=e.target.files[0];if(!f)return;
+ if(S.busy)return;
+ if(S.url)URL.revokeObjectURL(S.url);
+ S.file=f;S.url=URL.createObjectURL(f);S.cuts=[];S.dur=0;S.items=[];$("resCard").classList.add("hide");
+ const v=$("pv");v.src=S.url;v.classList.remove("hide");
+ $("info").textContent="読み込み中…";
+ v.onloadedmetadata=()=>{S.dur=v.duration;S.w=v.videoWidth;S.h=v.videoHeight;
+  if(!isFinite(S.dur)||!S.dur){$("info").innerHTML='<span class="err">この動画は読み込めませんでした（形式が未対応の可能性があります）。別の動画をお試しください。</span>';S.dur=0;refresh();return}
+  $("info").textContent=f.name+"　"+fmt(S.dur)+"（"+S.w+"×"+S.h+"）";refresh()};
+ v.onerror=()=>{$("info").innerHTML='<span class="err">この動画は読み込めませんでした。理由：ブラウザが対応していない形式です。</span>';S.dur=0;refresh()};
+ e.target.value="";
+};
+$("cutHere").onclick=()=>addCut($("pv").currentTime);
+$("cutAdd").onclick=()=>{const t=parseTime($("cutTxt").value);if(isNaN(t)){alert("時間は「1:30.5」や「90.5」のように入力してください。");return}addCut(t);$("cutTxt").value=""};
+function addCut(t){
+ if(S.busy||!S.dur)return;t=Math.round(t*10)/10;
+ if(t<=0.1||t>=S.dur-0.1){alert("動画の最初と最後の近くでは切れません。");return}
+ if(!S.cuts.some(c=>Math.abs(c-t)<0.05)){S.cuts.push(t);S.cuts.sort((a,b)=>a-b)}refresh();
+}
+const step=d=>{const v=$("pv");v.pause();v.currentTime=Math.min(Math.max(0,v.currentTime+d),S.dur)};
+$("back1").onclick=()=>step(-0.1);$("fwd1").onclick=()=>step(0.1);
+
+/* ---- 書き出し ---- */
+function pickMime(){
+ const c=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4;codecs=avc1,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+ if(!window.MediaRecorder)return null;
+ return c.find(m=>MediaRecorder.isTypeSupported(m))||"";
+}
+function outSize(){
+ let w=S.w,h=S.h;
+ if(val("q")==="small"){const m=Math.max(w,h);const target=m>=3000?1920:m>=1900?1280:m>=1200?960:Math.min(m,640);const k=Math.min(1,target/m);w*=k;h*=k}
+ return[Math.round(w/2)*2,Math.round(h/2)*2];
+}
+async function recordSeg(a,b,onProg,ctxRef){
+ const mime=pickMime();
+ if(mime===null)throw new Error("このブラウザは動画の書き出し（MediaRecorder）に対応していません。");
+ const v=document.createElement("video");v.src=S.url;v.playsInline=true;v.preload="auto";
+ await new Promise((ok,ng)=>{v.onloadeddata=ok;v.onerror=()=>ng(new Error("動画を読み込めませんでした。"))});
+ await new Promise(ok=>{v.onseeked=ok;v.currentTime=a});
+ const [w,h]=outSize();const keep=val("q")==="keep";
+ const cv=document.createElement("canvas");cv.width=w;cv.height=h;const cx=cv.getContext("2d");
+ const AC=window.AudioContext||window.webkitAudioContext;const ac=new AC();await ac.resume();
+ const src=ac.createMediaElementSource(v);const dst=ac.createMediaStreamDestination();src.connect(dst);
+ const vs=cv.captureStream(30);
+ const stream=new MediaStream([...vs.getVideoTracks(),...dst.stream.getAudioTracks()]);
+ const px=w*h;const vbr=keep?Math.min(16e6,Math.max(4e6,px*6)):Math.min(5e6,Math.max(1.2e6,px*2.5));
+ const opt={videoBitsPerSecond:vbr,audioBitsPerSecond:128000};if(mime)opt.mimeType=mime;
+ const rec=new MediaRecorder(stream,opt);const chunks=[];
+ rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+ const done=new Promise((ok,ng)=>{rec.onstop=ok;rec.onerror=e=>ng(new Error("書き出し中にエラーが起きました。"))});
+ let stop=false;
+ const draw=()=>{if(stop)return;cx.drawImage(v,0,0,w,h);onProg(Math.min(1,(v.currentTime-a)/(b-a)));
+  if(v.currentTime>=b||v.ended){stop=true;v.pause();setTimeout(()=>rec.stop(),150);return}
+  v.requestVideoFrameCallback?v.requestVideoFrameCallback(draw):requestAnimationFrame(draw)};
+ rec.start(500);
+ try{await v.play()}catch(e){throw new Error("再生を開始できませんでした。もう一度お試しください。")}
+ draw();
+ await done;ac.close();v.removeAttribute("src");
+ const type=(rec.mimeType||mime||"video/mp4").split(";")[0];
+ const blob=new Blob(chunks,{type});
+ if(blob.size<1000)throw new Error("空のファイルになりました。");
+ return blob;
+}
+function render(){
+ $("resCard").classList.remove("hide");$("res").innerHTML="";
+ S.items.forEach((it,i)=>{
+  const d=document.createElement("div");d.className="item";
+  let h='<div class="t">'+it.name+'</div><div class="note">'+Math.round(it.b-it.a)+'秒（'+fmt(it.a)+' → '+fmt(it.b)+'）';
+  if(it.blob)h+='　'+(it.blob.size/1048576).toFixed(1)+'MB';h+='</div>';
+  if(it.state==="run")h+='<div class="note">書き出し中…</div><div class="bar"><i style="width:'+Math.round(it.p*100)+'%"></i></div>';
+  if(it.state==="wait")h+='<div class="note">順番待ち</div>';
+  if(it.state==="err")h+='<div class="err">失敗：'+it.msg+'（スキップしました）</div><button data-r="'+i+'">もう一度やる</button>';
+  if(it.state==="ok")h+='<div class="row"><button data-s="'+i+'" class="main" style="width:auto;flex:1">保存</button><button data-p="'+i+'">プレビュー</button></div><div data-v="'+i+'"></div>';
+  d.innerHTML=h;$("res").appendChild(d);
+ });
+}
+$("res").addEventListener("click",async e=>{
+ const g=a=>e.target.getAttribute(a);
+ if(g("data-r")!==null&&!S.busy){await runOne(+g("data-r"))}
+ if(g("data-p")!==null){const i=+g("data-p"),box=document.querySelector('[data-v="'+i+'"]');
+  if(box.firstChild){box.innerHTML="";return}const v=document.createElement("video");v.controls=true;v.playsInline=true;v.src=S.items[i].url;box.appendChild(v)}
+ if(g("data-s")!==null){const it=S.items[+g("data-s")];
+  const f=new File([it.blob],it.name,{type:it.blob.type});
+  try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}catch(x){if(x.name==="AbortError")return}
+  const a=document.createElement("a");a.href=it.url;a.download=it.name;document.body.appendChild(a);a.click();a.remove()}
+});
+async function runOne(i){
+ const it=S.items[i];it.state="run";it.p=0;render();S.busy=true;lock();
+ try{
+  const blob=await recordSeg(it.a,it.b,p=>{it.p=p;const bar=$("res").children[i]&&$("res").children[i].querySelector(".bar i");if(bar)bar.style.width=Math.round(p*100)+"%"});
+  if(it.url)URL.revokeObjectURL(it.url);
+  it.blob=blob;it.url=URL.createObjectURL(blob);it.state="ok";
+ }catch(err){it.state="err";it.msg=err.message||"原因不明のエラー"}
+ S.busy=false;lock();render();
+}
+function lock(){$("go").disabled=S.busy||$("go").disabled&&false;if(S.busy){$("go").disabled=true;$("pick").disabled=true}else{$("pick").disabled=false;refresh()}}
+$("go").onclick=async()=>{
+ if(S.busy)return;
+ const mime=pickMime();
+ if(mime===null){alert("このブラウザでは書き出しができません。最新のSafariまたはChromeでお試しください。");return}
+ const ext=(mime||"video/mp4").includes("webm")?"webm":"mp4";
+ const base=S.file.name.replace(/\.[^.]+$/,"");const sg=segments();
+ S.items.forEach(i=>i.url&&URL.revokeObjectURL(i.url));
+ S.items=sg.map((s,i)=>({a:s[0],b:s[1],name:base+"_"+pad(i+1)+"."+ext,state:"wait",p:0}));
+ render();
+ let wl=null;try{wl=await navigator.wakeLock.request("screen")}catch(e){}
+ for(let i=0;i<S.items.length;i++)await runOne(i);
+ if(wl)wl.release();
+ if(ext==="webm")alert("このブラウザはMP4で書き出せないため、WebM形式で保存されます。LINEなどで使えない場合があります。");
+};
+refresh();
+})();
+</script>
+<script>
+if('serviceWorker' in navigator && location.protocol!=='file:'){
+  window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});
+}
+</script>
+</body>
+</html>
