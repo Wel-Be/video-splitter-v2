@@ -1,5 +1,5 @@
 // 更新したときは VERSION の数字を上げると、新しい内容に入れ替わります
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'video-splitter-' + VERSION;
 const FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];
@@ -14,12 +14,14 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // ネットにつながるときは最新を取得し、つながらないときは保存済みを使います
   e.respondWith(
-    caches.match(e.request, {ignoreSearch: true}).then(hit => hit || fetch(e.request).then(res => {
-      const copy = res.clone();
-      if (res.ok && new URL(e.request.url).origin === location.origin)
+    fetch(e.request).then(res => {
+      if (res.ok && new URL(e.request.url).origin === location.origin) {
+        const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
+      }
       return res;
-    }).catch(() => caches.match('./index.html')))
+    }).catch(() => caches.match(e.request, {ignoreSearch: true}).then(hit => hit || caches.match('./index.html')))
   );
 });
