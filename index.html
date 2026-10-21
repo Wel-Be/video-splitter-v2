@@ -101,6 +101,7 @@ video{width:100%;border-radius:10px;background:#000;max-height:50vh}
 
 <div class="card hide" id="resCard"><h2>結果</h2><div id="res"></div>
 <div class="note">「端末に保存」を1つずつ押してください。iPhoneは「共有」から「ビデオを保存」を選ぶと写真アプリに入ります。途中で止まったときは「続きから再開」で、できていない分だけ処理します。</div></div>
+<p class="note" style="text-align:center">版 v5</p>
 </main>
 
 <script>
@@ -203,21 +204,36 @@ function patchWebm(ab,sec){
  return new Blob([u.subarray(0,i),hdr,u.subarray(s0,e0),d,u.subarray(e0)]);
 }
 async function fixDuration(blob,sec){
- try{const ab=await blob.arrayBuffer();
+ try{const n=Math.min(65536,blob.size);const ab=await blob.slice(0,n).arrayBuffer();
   const r=blob.type.includes("webm")?patchWebm(ab,sec):patchMp4(ab,sec);
-  return new Blob([r],{type:blob.type})}catch(e){return blob}
+  return new Blob([r,blob.slice(n)],{type:blob.type})}catch(e){return blob}
+}
+let E=null;
+async function getEngine(){
+ if(E)return E;
+ const v=document.createElement("video");v.src=S.url;v.playsInline=true;v.preload="auto";
+ await new Promise((ok,ng)=>{v.onloadeddata=ok;v.onerror=()=>ng(new Error("動画を読み込めませんでした。"))});
+ const AC=window.AudioContext||window.webkitAudioContext;const ac=new AC();await ac.resume();
+ const src=ac.createMediaElementSource(v);
+ E={v,ac,src};return E;
+}
+function freeEngine(){
+ if(!E)return;const e=E;E=null;
+ try{e.v.pause();e.v.removeAttribute("src");e.v.load()}catch(x){}
+ try{e.src.disconnect()}catch(x){}
+ try{e.ac.close()}catch(x){}
 }
 async function recordSeg(a,b,onProg){
  const mime=pickMime();
  if(mime===null)throw new Error("このブラウザは動画の書き出しに対応していません。");
  if(S.abort)throw new Error(S.reason||"中止しました");
- const v=document.createElement("video");v.src=S.url;v.playsInline=true;v.preload="auto";
- await new Promise((ok,ng)=>{v.onloadeddata=ok;v.onerror=()=>ng(new Error("動画を読み込めませんでした。"))});
+ const {v,ac,src}=await getEngine();
+ v.pause();
  await Promise.race([new Promise(ok=>{v.onseeked=ok;v.currentTime=a}),new Promise(ok=>setTimeout(ok,3000))]);
+ v.onseeked=null;
  const [w,h]=outSize();const keep=val("q")==="keep";
  const cv=document.createElement("canvas");cv.width=w;cv.height=h;const cx=cv.getContext("2d");
- const AC=window.AudioContext||window.webkitAudioContext;const ac=new AC();await ac.resume();
- const src=ac.createMediaElementSource(v);const dst=ac.createMediaStreamDestination();src.connect(dst);
+ const dst=ac.createMediaStreamDestination();src.connect(dst);
  const vs=cv.captureStream(30);
  const stream=new MediaStream([...vs.getVideoTracks(),...dst.stream.getAudioTracks()]);
  const px=w*h;const vbr=keep?Math.min(16e6,Math.max(4e6,px*6)):Math.min(5e6,Math.max(1.2e6,px*2.5));
@@ -228,17 +244,22 @@ async function recordSeg(a,b,onProg){
  const finish=err=>{if(stop)return;stop=true;fail=err||null;v.pause();setTimeout(()=>{try{if(rec.state!=="inactive")rec.stop()}catch(e){}},150)};
  const done=new Promise(ok=>{rec.onstop=ok;rec.onerror=()=>{finish(new Error("書き出し中にエラーが起きました。"));ok()}});
  S.cancel=()=>finish(new Error(S.reason||"中止しました"));
+ const onEnded=()=>{endT=Math.max(endT,v.currentTime);try{cx.drawImage(v,0,0,w,h)}catch(e){}finish()};
+ v.addEventListener("ended",onEnded);
  let lastT=-1,lastAt=performance.now();
- const wd=setInterval(()=>{if(v.currentTime!==lastT){lastT=v.currentTime;lastAt=performance.now()}
-  else if(performance.now()-lastAt>10000)finish(new Error("動画の再生が止まりました（端末の負荷が高い可能性があります）"))},1000);
- const cleanup=()=>{clearInterval(wd);S.cancel=null;try{ac.close()}catch(e){}};
+ const wd=setInterval(()=>{
+  if(stop)return;
+  if(v.ended||v.currentTime>=b-0.03){endT=Math.max(endT,v.currentTime);finish();return}
+  if(v.currentTime!==lastT){lastT=v.currentTime;lastAt=performance.now()}
+  else if(performance.now()-lastAt>10000){if(v.currentTime>=b-2){endT=Math.max(endT,v.currentTime);finish()}else finish(new Error("動画の再生が止まりました（位置 "+v.currentTime.toFixed(1)+"秒・状態 "+v.readyState+"）"))}},500);
+ const cleanup=()=>{clearInterval(wd);S.cancel=null;v.removeEventListener("ended",onEnded);try{src.disconnect(dst)}catch(e){}stream.getTracks().forEach(t=>{try{t.stop()}catch(e){}})};
  const draw=()=>{if(stop)return;cx.drawImage(v,0,0,w,h);endT=v.currentTime;onProg(Math.min(1,(v.currentTime-a)/(b-a)));
   if(v.currentTime>=b||v.ended){finish();return}
   v.requestVideoFrameCallback?v.requestVideoFrameCallback(draw):requestAnimationFrame(draw)};
  rec.start(500);
  try{await v.play()}catch(e){try{rec.stop()}catch(x){}cleanup();throw new Error("再生を開始できませんでした。もう一度お試しください。")}
  draw();
- await done;cleanup();v.removeAttribute("src");
+ await done;cleanup();
  if(fail)throw fail;
  const type=(rec.mimeType||mime||"video/mp4").split(";")[0];
  const blob=new Blob(chunks,{type});
@@ -286,14 +307,16 @@ async function runOne(i){
   const r=await recordSeg(it.a,it.b,p=>{it.p=p;const row=$("res").children[i];const bar=row&&row.querySelector(".bar i");if(bar)bar.style.width=Math.round(p*100)+"%"});
   if(it.url)URL.revokeObjectURL(it.url);
   it.blob=r.blob;it.real=r.sec;it.url=URL.createObjectURL(r.blob);it.state="ok";
- }catch(err){it.state="err";it.msg=err.message||"原因不明のエラー"}
+ }catch(err){it.state="err";it.msg=err.message||"原因不明のエラー";freeEngine()}
  render();
 }
 async function runList(idx){
  if(S.busy)return;
  setBusy(true);S.abort=false;S.reason="";
+ try{$("pv").pause()}catch(e){}
  let wl=null;try{wl=await navigator.wakeLock.request("screen")}catch(e){}
  for(const i of idx){if(S.abort)break;await runOne(i)}
+ freeEngine();
  if(wl){try{wl.release()}catch(e){}}
  const wasAbort=S.abort;
  setBusy(false);render();

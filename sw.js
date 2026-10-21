@@ -1,5 +1,5 @@
 // 更新したときは VERSION の数字を上げると、新しい内容に入れ替わります
-const VERSION = 'v2';
+const VERSION = 'v5';
 const CACHE = 'video-splitter-' + VERSION;
 const FILES = ['./', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-icon.png'];
